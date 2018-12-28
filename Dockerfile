@@ -1,7 +1,7 @@
 FROM python:2
 COPY . /app
 WORKDIR /app
-ENV FLASK_APP jk_hello.py
+ENV FLASK_APP jk_flask.py
 RUN pip install flask
 RUN pip install requests
 RUN pip install python-dateutil
