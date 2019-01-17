@@ -49,12 +49,17 @@ class jenkins_req(object):
         'rerun p2': {
             'URL': u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline2_build/buildWithParameters',
             'NAME': u'Pipeline1-DEV'
+        },
+        'rerun dev': {
+                    'URL': u'http://ccmts-pipeline:8080/job/Development/job/Github_Pipeline1/buildWithParameters',
+                   'NAME': u'Pipeline1-DEV'
         }
+
     }
     PR_MERGED_URL = u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline2_build/buildWithParameters'
 
     def get_pull_request_approver_list(self):
-        self.reviews_url = self.PR_url + "/reviews"
+        self.reviews_url = self.PR_api_url + "/reviews"
 
         response = requests.get(self.reviews_url)
         if response.status_code != 200:
@@ -83,9 +88,9 @@ class jenkins_req(object):
         return ret_str[:-3]
 
     def get_pull_request_paras(self):
-        response = requests.get(self.PR_url)
+        response = requests.get(self.PR_api_url)
         if response.status_code != 200:
-            raise Exception("Get pull request info fail! From URL:" + self.PR_url)
+            raise Exception("Get pull request info fail! From URL:" + self.PR_api_url)
 
         pull_data = response.json()
         paras = ""
@@ -127,7 +132,8 @@ class jenkins_req(object):
 
                 jenkins_request_url += u"&PULL_REQUEST_REVIEWERS_APPROVED_NAME="
 
-                self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("url")
+                self.PR_api_url = self.webhook_payload.get("issue").get("pull_request").get("url")
+                self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("html_url")
 
                 jenkins_request_url += u"&PULL_REQUEST_URL="
                 jenkins_request_url += self.PR_url
@@ -140,7 +146,8 @@ class jenkins_req(object):
 
     def gen_jenkins_request_url__pr_approved(self):
 
-        self.PR_url = self.webhook_payload.get("pull_request").get("url")
+        self.PR_api_url = self.webhook_payload.get("pull_request").get("url")
+        self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("html_url")
 
         jenkins_request_url = self.PR_APPROVED_URL_BASE
         jenkins_request_url += u"?token=cisco"
@@ -169,7 +176,8 @@ class jenkins_req(object):
         self.notify()
 
         
-        self.PR_url = self.webhook_payload.get("pull_request").get("url")
+        self.PR_api_url = self.webhook_payload.get("pull_request").get("url")
+        self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("html_url")
 
         jenkins_request_url = self.PR_MERGED_URL
         jenkins_request_url += u"?token=cisco"
