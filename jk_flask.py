@@ -39,24 +39,60 @@ class Review(object):
 
 
 class jenkins_req(object):
-    PR_APPROVED_URL_BASE = u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline1/buildWithParameters'
 
+    PR_APPROVED_URL_BASE = u'http://ccmts-pipeline.cisco.com:8080/job/Pipeline1/buildWithParameters'
+    PR_APPROVED_URL_BASE_dev = u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline1/buildWithParameters'
+    PR_MERGED_URL = u'http://ccmts-pipeline.cisco.com:8080/job/Pipeline2_build/buildWithParameters'
+    PR_MERGED_URL_dev = u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline2_build/buildWithParameters'
     COMMENT_MAGIC_WORDS = {
-        'rerun p1': {
+        'rerun p1 dev': {
             'URL': u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline1/buildWithParameters',
             'NAME': u'Pipeline1-DEV'
         },
-        'rerun p2': {
+        'rerun p2 dev': {
             'URL': u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline2_build/buildWithParameters',
             'NAME': u'Pipeline1-DEV'
         },
+        'rerun p1': {
+            'URL': u'http://ccmts-pipeline.cisco.com:8080/job/Pipeline1/buildWithParameters',
+            'NAME': u'Pipeline1-DEV'
+        },
+        'rerun p2': {
+            'URL': u'http://ccmts-pipeline.cisco.com:8080/job/Pipeline2_build/buildWithParameters',
+            'NAME': u'Pipeline1-DEV'
+        },
         'rerun dev': {
-                    'URL': u'http://ccmts-pipeline:8080/job/Development/job/Github_Pipeline1/buildWithParameters',
-                   'NAME': u'Pipeline1-DEV'
+            'URL': u'http://ccmts-pipeline:8080/job/Development/job/Github_Pipeline1/buildWithParameters',
+            'NAME': u'Pipeline1-DEV'
         }
 
     }
-    PR_MERGED_URL = u'http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline2_build/buildWithParameters'
+
+
+
+    def __init__(self, webhook_payload, is_production):
+        self.webhook_payload = webhook_payload
+        self.is_production = is_production
+        self.trigger_event_type = self.get_trigger_type()
+        print("Trigger Event Type: %s" % self.trigger_event_type)
+
+    def get_base_url(self, event_type, is_production):
+        if Trigger_action.Manual_comment == event_type:
+            comment = self.webhook_payload.get("comment").get("body").strip()
+            for key, _ in self.COMMENT_MAGIC_WORDS.items():
+                if (comment == key):
+                    return self.COMMENT_MAGIC_WORDS[key]['URL']
+
+        if event_type == Trigger_action.Pull_Request_Approved:
+            if is_production:
+                return self.PR_APPROVED_URL_BASE
+            else:
+                return self.PR_APPROVED_URL_BASE_dev
+        elif event_type == Trigger_action.Pull_Request_Merged:
+            if is_production:
+                return self.PR_MERGED_URL
+            else:
+                return self.PR_MERGED_URL_dev
 
     def get_pull_request_approver_list(self):
         self.reviews_url = self.PR_api_url + "/reviews"
@@ -87,13 +123,16 @@ class jenkins_req(object):
 
         return ret_str[:-3]
 
-    def get_pull_request_paras(self):
-        response = requests.get(self.PR_api_url)
+    def get_pull_request_paras(self, base_url, pr_api_url, pr_username, action):
+        response = requests.get(pr_api_url)
         if response.status_code != 200:
             raise Exception("Get pull request info fail! From URL:" + self.PR_api_url)
 
         pull_data = response.json()
         paras = ""
+        paras += base_url
+        paras += u"?token=cisco"
+        paras += u"&PULL_REQUEST_USER_NAME=" + pr_username
         paras += u"&PULL_REQUEST_FROM_REPO_NAME="
         paras += pull_data.get('base').get('repo').get('name')
         paras += u"&PULL_REQUEST_FROM_BRANCH="
@@ -103,127 +142,42 @@ class jenkins_req(object):
         paras += u"&PULL_REQUEST_FROM_REPO_PROJECT_KEY="
         paras += pull_data.get('base').get('repo').get('full_name').split('/')[0]
         paras += u"&PULL_REQUEST_AUTHOR_NAME="
-        paras += pull_data.get('head').get('user').get('login')
+        paras += pull_data.get('user').get('login')
         paras += u"&PULL_REQUEST_ID="
         paras += str(pull_data.get('number'))
         paras += u"&PULL_REQUEST_TITLE="
         paras += pull_data.get('title').replace(' ', '+')
         paras += u"&PULL_REQUEST_TO_BRANCH="
         paras += pull_data.get('base').get('ref')
+        paras += u"&PULL_REQUEST_ACTION=" + action
+        paras += u"&PULL_REQUEST_REVIEWERS_APPROVED_NAME=" + self.get_pull_request_approver_list()
+        paras += u"&PULL_REQUEST_URL=" + pull_data.get('html_url')
 
         return paras
 
-    def gen_jenkins_request_url__manual_comment(self):
-        comment = self.webhook_payload.get("comment").get("body").strip()
-        for key in self.COMMENT_MAGIC_WORDS.keys():
-            if (comment == key):
-                jenkins_request_url = self.COMMENT_MAGIC_WORDS[key]['URL']
+    def get_pr_api_url(self):
+        if self.trigger_event_type == Trigger_action.Manual_comment:
+            self.PR_api_url = self.webhook_payload.get("issue").get("pull_request").get("url")
+        else:
+            self.PR_api_url = self.webhook_payload.get("pull_request").get("url")
+        return self.PR_api_url
 
-                jenkins_request_url += u"?token=cisco"
+    def get_pr_user_name(self):
+        if self.trigger_event_type == Trigger_action.Manual_comment:
+            return self.webhook_payload.get("comment").get("user").get("login")
+        elif self.trigger_event_type == Trigger_action.Pull_Request_Approved:
+            return self.webhook_payload.get("review").get("user").get("login")
+        elif self.trigger_event_type == Trigger_action.Pull_Request_Merged:
+            return self.webhook_payload.get("pull_request").get("user").get("login")
 
-                jenkins_request_url += u"&PULL_REQUEST_USER_NAME="
-                jenkins_request_url += self.webhook_payload.get("comment").get("user").get("login")
+    def get_action_name(self):
+        if self.trigger_event_type == Trigger_action.Manual_comment:
+            return u"BUTTON_TRIGGER"
+        elif self.trigger_event_type == Trigger_action.Pull_Request_Approved:
+            return u"APPROVED"
+        elif self.trigger_event_type == Trigger_action.Pull_Request_Merged:
+            return u"MERGED"
 
-                jenkins_request_url += u"&PULL_REQUEST_ACTION="
-                jenkins_request_url += u"BUTTON_TRIGGER"
-
-                jenkins_request_url += u"&PBUTTON_TRIGGER_TITLE="
-                jenkins_request_url += self.COMMENT_MAGIC_WORDS[key]['NAME']
-
-                jenkins_request_url += u"&PULL_REQUEST_REVIEWERS_APPROVED_NAME="
-
-                self.PR_api_url = self.webhook_payload.get("issue").get("pull_request").get("url")
-                self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("html_url")
-
-                jenkins_request_url += u"&PULL_REQUEST_URL="
-                jenkins_request_url += self.PR_url
-
-                jenkins_request_url += self.get_pull_request_paras()
-
-                return jenkins_request_url
-
-        raise Exception("No match pattern for comments")
-
-    def gen_jenkins_request_url__pr_approved(self):
-
-        self.PR_api_url = self.webhook_payload.get("pull_request").get("url")
-        self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("html_url")
-
-        jenkins_request_url = self.PR_APPROVED_URL_BASE
-        jenkins_request_url += u"?token=cisco"
-
-        jenkins_request_url += u"&PULL_REQUEST_USER_NAME="
-        jenkins_request_url += self.webhook_payload.get("review").get("user").get("login")
-
-        ##########################
-        jenkins_request_url += u"&PULL_REQUEST_ACTION="
-        jenkins_request_url += u"APPROVED"
-
-        jenkins_request_url += u"&PBUTTON_TRIGGER_TITLE="
-        jenkins_request_url += ""
-
-        jenkins_request_url += u"&PULL_REQUEST_URL="
-        jenkins_request_url += self.PR_url
-
-        jenkins_request_url += self.get_pull_request_paras()
-
-        jenkins_request_url += u"&PULL_REQUEST_REVIEWERS_APPROVED_NAME="
-        jenkins_request_url += self.get_pull_request_approver_list()
-
-        return jenkins_request_url
-
-    def gen_jenkins_request_url__pr_merged(self):
-        self.notify()
-
-        
-        self.PR_api_url = self.webhook_payload.get("pull_request").get("url")
-        self.PR_url = self.webhook_payload.get("issue").get("pull_request").get("html_url")
-
-        jenkins_request_url = self.PR_MERGED_URL
-        jenkins_request_url += u"?token=cisco"
-
-        jenkins_request_url += u"&PULL_REQUEST_USER_NAME="
-        jenkins_request_url += self.webhook_payload.get("pull_request").get("user").get("login")
-
-        ##########################
-        jenkins_request_url += u"&PULL_REQUEST_ACTION="
-        jenkins_request_url += u"MERGED"
-
-        jenkins_request_url += u"&PBUTTON_TRIGGER_TITLE="
-        jenkins_request_url += ""
-
-        jenkins_request_url += u"&PULL_REQUEST_URL="
-        jenkins_request_url += self.PR_url
-
-        jenkins_request_url += self.get_pull_request_paras()
-
-        jenkins_request_url += u"&PULL_REQUEST_REVIEWERS_APPROVED_NAME="
-        jenkins_request_url += self.get_pull_request_approver_list()
-
-        return jenkins_request_url
-
-    def notify(self):
-        data = self.webhook_payload
-        action = data.get("action")
-        url = data.get("pull_request").get("html_url")
-        body = data.get("pull_request").get("body")
-        title = data.get("pull_request").get("title")
-        uid = data.get("pull_request").get("user").get("login")
-        ref = data.get("pull_request").get("head").get("ref")
-        repo = data.get("pull_request").get("head").get("repo").get("full_name")
-
-        msg = "<table><tr><td>" + url + "</td></tr>" \
-              + "<tr><td> from </td><td>" + uid + "</td></tr>" \
-              + "</table>"
-        mail_title = repo + "/" + ref + "- Pull request: " + title
-        send_mail("ruijiang@cisco.com", mail_title, msg, "")
-
-
-    PARSE_WEBHOOK_PAYLOAD_CB = {
-        Trigger_action.Pull_Request_Approved: gen_jenkins_request_url__pr_approved,
-        Trigger_action.Pull_Request_Merged: gen_jenkins_request_url__pr_merged,
-        Trigger_action.Manual_comment: gen_jenkins_request_url__manual_comment
-    }
 
     def get_trigger_type(self):
         if self.webhook_payload.get("action") == "created":
@@ -240,16 +194,12 @@ class jenkins_req(object):
 
         return Trigger_action.UNKNOWN
 
-    def __init__(self, webhook_payload):
-        self.webhook_payload = webhook_payload
+    def gen_jenkins_request_url(self, is_production):
 
-        self.trigger_event_type = self.get_trigger_type()
-        print("Trigger Event Type: %s" % self.trigger_event_type)
-
-    def gen_jenkins_request_url(self):
-
-        webhook_paras = self.PARSE_WEBHOOK_PAYLOAD_CB[self.trigger_event_type](self)
-
+        webhook_paras = self.get_pull_request_paras(self.get_base_url(self.trigger_event_type, is_production),
+                                                    self.get_pr_api_url(),
+                                                    self.get_pr_user_name(),
+                                                    self.get_action_name())
         self.jenkins_request_url = webhook_paras
 
     def do_jenkins_trigger(self):
@@ -259,44 +209,54 @@ class jenkins_req(object):
         print("Jenkins Request Response Status Code: %d " % res.status_code)
 
 
-@app.route('/', methods=['GET', 'POST'])
-def webhook_handler():
+@app.route('/product', methods=['GET', 'POST'])
+def webhook_handler_for_production():
     # with app.test_request_context():
+    is_production = True
     print(request)
     if request.method == 'POST':
-        #try:
+        try:
             webhook_payload = request.get_json()
-            event = jenkins_req(webhook_payload)
-            event.gen_jenkins_request_url()
-            event.do_jenkins_trigger()
+            event = jenkins_req(webhook_payload, is_production)
+            if event.trigger_event_type == Trigger_action.UNKNOWN:
+                print("Unknow event type, not handle it")
+            else:
+                event.gen_jenkins_request_url(is_production)
+                event.do_jenkins_trigger()
+                if event.trigger_event_type != Trigger_action.Manual_comment:
+                    event.gen_jenkins_request_url(False)
+                    event.do_jenkins_trigger()
 
             return "Hello Jenkins!"
 
-        #except Exception as e:
-        #    print(type(e).__name__ + ': ' + str(e))
-        #    return (type(e).__name__ + ': ' + str(e))
+        except Exception as e:
+            print(type(e).__name__ + ': ' + str(e))
+            return (type(e).__name__ + ': ' + str(e))
     else:
         return "No! No GET!"
 
-def send_mail(recipients, subject, html, text=""):
-     #cc_recipients = "test@cisco.com"  # , yuayu@cisco.com"
-     smtpserver = smtplib.SMTP("outbound.cisco.com")
-     smtpserver.ehlo()
-     smtpserver.ehlo()
-     from_user = 'ccmts-pipeline@cisco.com'
-     msg = MIMEMultipart('alternative')
-     msg['Subject'] = subject
-     msg['From'] = from_user
-     msg['To'] = recipients
-     #msg['Cc'] = cc_recipients
-     part1 = MIMEText(text, 'plain')
-     part2 = MIMEText(html, 'html')
-     msg.attach(part1)
-     msg.attach(part2)
+@app.route('/dev', methods=['GET', 'POST'])
+def webhook_handler_for_production():
+    # with app.test_request_context():
+    is_production = False
+    print(request)
+    if request.method == 'POST':
+        try:
+            webhook_payload = request.get_json()
+            event = jenkins_req(webhook_payload, is_production)
+            if event.trigger_event_type == Trigger_action.UNKNOWN:
+                print("Unknow event type, not handle it")
+            else:
+                event.gen_jenkins_request_url(is_production)
+                event.do_jenkins_trigger()
 
-     smtpserver.sendmail(from_user, recipients, msg.as_string())
-     smtpserver.close()
+            return "Hello Jenkins!"
 
+        except Exception as e:
+            print(type(e).__name__ + ': ' + str(e))
+            return (type(e).__name__ + ': ' + str(e))
+    else:
+        return "No! No GET!"
 
 if __name__ == '__main__':
     app.run()

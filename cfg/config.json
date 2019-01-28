@@ -1,0 +1,28 @@
+{
+  "PR_APPROVED_URL_BASE": "http://ccmts-pipeline.cisco.com:8080/job/Pipeline1/buildWithParameters",
+  "PR_MERGED_URL": "http://ccmts-pipeline.cisco.com:8080%s/job/Pipeline2_build/buildWithParameters",
+  "COMMENT_MAGIC_WORDS": {
+    "rerun p1 dev": {
+      "URL": "http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline1/buildWithParameters",
+      "NAME": "Pipeline1-DEV"
+    },
+    "rerun p2 dev": {
+      "URL": "http://ccmts-pipeline.cisco.com:8080/job/Development/job/Pipeline2_build/buildWithParameters",
+      "NAME": "Pipeline2-DEV"
+    },
+    "rerun p1": {
+      "URL": "http://ccmts-pipeline.cisco.com:8080/job/Pipeline1/buildWithParameters",
+      "NAME": "Pipeline1"
+    },
+    "rerun p2": {
+      "URL": "http://ccmts-pipeline.cisco.com:8080/job/Pipeline2_build/buildWithParameters",
+      "NAME": "Pipeline2"
+    },
+    "rerun dev": {
+            "URL": "http://ccmts-pipeline:8080/job/Development/job/Github_Pipeline1/buildWithParameters",
+            "NAME": "Pipeline1-DEV"
+        }
+  }
+}
+
+
